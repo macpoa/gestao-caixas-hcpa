@@ -13,15 +13,16 @@ def conectar_google():
     try:
         escopo = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
         
-        # Aqui está a mágica: ele lê dos Secrets em vez de procurar o arquivo
+        # Lê dos secrets do Streamlit Cloud
         if "gcp_service_account" in st.secrets:
             creds_info = st.secrets["gcp_service_account"]
             creds = Credentials.from_service_account_info(creds_info, scopes=escopo)
         else:
-            # Caso você ainda esteja testando no PC com o arquivo local
+            # Fallback para teste local
             creds = Credentials.from_service_account_file('credenciais.json', scopes=escopo)
             
         client = gspread.authorize(creds)
+        # IMPORTANTE: O nome abaixo deve ser IGUAL ao nome do arquivo no seu Google Drive
         return client.open("Controle de caixas HCPA")
     except Exception as e:
         st.error(f"Erro ao conectar com a planilha: {e}")
