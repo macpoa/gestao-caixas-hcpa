@@ -7,96 +7,64 @@ import pandas as pd
 # --- Configuração da Página ---
 st.set_page_config(page_title="HCPA - Gestão de Caixas", layout="centered")
 
-
-# --- Conexão com Google Sheets (Versão Segura para Streamlit Cloud) ---
+# --- Conexão Segura (Apenas via Secrets) ---
 def conectar_google():
     try:
         escopo = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
         
-        # Lê dos secrets do Streamlit Cloud
+        # Aqui o código ignora arquivos e lê direto do que você colou no Streamlit
         if "gcp_service_account" in st.secrets:
             creds_info = st.secrets["gcp_service_account"]
             creds = Credentials.from_service_account_info(creds_info, scopes=escopo)
+            client = gspread.authorize(creds)
+            return client.open("Controle de caixas HCPA")
         else:
-            # Fallback para teste local
-            creds = Credentials.from_service_account_file('credenciais.json', scopes=escopo)
-            
-        client = gspread.authorize(creds)
-        # IMPORTANTE: O nome abaixo deve ser IGUAL ao nome do arquivo no seu Google Drive
-        return client.open("Controle de caixas HCPA")
+            st.error("Configuração 'gcp_service_account' não encontrada nos Secrets!")
+            return None
     except Exception as e:
         st.error(f"Erro ao conectar com a planilha: {e}")
         return None
 
+# Inicializa as variáveis
 planilha = conectar_google()
 aba_historico = planilha.get_worksheet(0) if planilha else None
 aba_pendentes = planilha.get_worksheet(1) if planilha else None
 
-# --- Captura de Parâmetro da URL (Passo 02) ---
-# Se acessar: .../?setor=EMERGENCIA, o campo setor será preenchido.
+# --- Restante do código (Notificar, Painel, Coleta) ---
 setor_url = st.query_params.get("setor", "").upper()
 
 st.title("📦 Sistema de Caixas HCPA")
-
 tab1, tab2, tab3 = st.tabs(["📢 Notificar", "📊 Painel", "✅ Coleta"])
 
-# --- ABA 1: NOTIFICAR ---
 with tab1:
     st.subheader("Notificar Acúmulo")
     setor_notif = st.text_input("Unidade/Setor", value=setor_url, placeholder="Ex: Emergência")
-    vol_estimado = st.selectbox("Volume Estimado", 
-                                ["Até 5 (Skate)", "Até 10 (1 carro)", "+ de 10 (Várias viagens)"])
-    
+    vol_estimado = st.selectbox("Volume Estimado", ["Até 5 (Skate)", "Até 10 (1 carro)", "+ de 10 (Várias viagens)"])
     if st.button("ENVIAR ALERTA", type="primary"):
         if setor_notif and aba_pendentes:
             hora = datetime.datetime.now().strftime("%H:%M")
             aba_pendentes.append_row([setor_notif, vol_estimado, hora, "ABERTO"])
             st.success(f"Alerta enviado para {setor_notif}!")
-        else:
-            st.warning("Preencha o setor ou verifique a conexão.")
 
-# --- ABA 2: PAINEL ---
 with tab2:
     st.subheader("Chamados Ativos")
     if aba_pendentes:
         dados = aba_pendentes.get_all_records()
         if dados:
-            df = pd.DataFrame(dados)
-            st.table(df)
-            
-            # Análise Inteligente básica
-            st.info(f"Existem {len(df)} pontos aguardando coleta no momento.")
+            st.table(pd.DataFrame(dados))
         else:
-            st.write("✅ Tudo limpo! Nenhuma pendência.")
+            st.write("✅ Tudo limpo!")
 
-# --- ABA 3: REGISTRAR COLETA ---
 with tab3:
     st.subheader("Registrar Coleta")
     cartao = st.text_input("Cartão Ponto")
-    setor_coleta = st.text_input("Confirmar Setor", value=setor_url)
+    setor_coleta = st.text_input("Confirmar Setor", value=setor_url, key="col_input")
     qtd = st.number_input("Quantidade Coletada", min_value=1, step=1)
-    limpo = st.checkbox("O local ficou totalmente limpo?")
-    
-    if st.button("FINALIZAR REGISTRO", type="primary"):
+    if st.button("FINALIZAR REGISTRO"):
         if cartao and setor_coleta and aba_historico:
-            agora = datetime.datetime.now()
-            # Salva no histórico
-            aba_historico.append_row([
-                agora.strftime("%d/%m/%Y %H:%M"),
-                setor_coleta,
-                qtd,
-                cartao,
-                "SIM" if limpo else "NÃO"
-            ])
-            
-            # Remove da lista de pendentes
+            aba_historico.append_row([datetime.datetime.now().strftime("%d/%m/%Y %H:%M"), setor_coleta, qtd, cartao])
             try:
                 celula = aba_pendentes.find(setor_coleta)
                 aba_pendentes.delete_rows(celula.row)
-            except:
-                pass # Se não achar o chamado, apenas segue
-                
-            st.balloons()
-            st.success("Coleta registrada com sucesso!")
-        else:
-            st.error("Preencha todos os campos.")
+            except: pass
+            st.success("Coleta registrada!")
