@@ -7,12 +7,20 @@ import pandas as pd
 # --- Configuração da Página ---
 st.set_page_config(page_title="HCPA - Gestão de Caixas", layout="centered")
 
-# --- Conexão com Google Sheets ---
+
+# --- Conexão com Google Sheets (Versão Segura para Streamlit Cloud) ---
 def conectar_google():
     try:
         escopo = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-        # Certifique-se que o arquivo credenciais.json está na mesma pasta
-        creds = Credentials.from_service_account_file('credenciais.json', scopes=escopo)
+        
+        # Aqui está a mágica: ele lê dos Secrets em vez de procurar o arquivo
+        if "gcp_service_account" in st.secrets:
+            creds_info = st.secrets["gcp_service_account"]
+            creds = Credentials.from_service_account_info(creds_info, scopes=escopo)
+        else:
+            # Caso você ainda esteja testando no PC com o arquivo local
+            creds = Credentials.from_service_account_file('credenciais.json', scopes=escopo)
+            
         client = gspread.authorize(creds)
         return client.open("Controle de caixas HCPA")
     except Exception as e:
